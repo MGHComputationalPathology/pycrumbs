@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Emacs temp files
+*~
+
+# PyCharm
+.idea/
+
 # Distribution / packaging
 .Python
 build/
