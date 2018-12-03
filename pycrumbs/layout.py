@@ -13,6 +13,7 @@ import numpy as np
 
 
 class Dimensions:
+    """Stores subtree dimensions"""
     def __init__(self, node, x, y, width, height, node_x, node_y):
         self.node = node
         self.x, self.y = x, y
@@ -41,7 +42,22 @@ def spring_force(pos_a, pos_b, neutral_length=1.0, spring_constant=1.0, alpha=0.
 
 
 def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0):
+    """\
+    Adjusts node coordinates using a force-directed layout model. The adjustment is performed along the x axis only.
+    The algorithm runs in-place.
+
+    :param dimensions: list of dimensions to adjust
+    :param alpha: step size
+    :param iterations: number of iterations to run
+    :param spring_constant: spring constant
+    :param parent_multiplier: multiplier for force from parent -> this will tend to keep children close to their parents
+    :return: adjusted dimensions
+
+    """
     def adjust_at_depth(dims, min_x, max_x):
+        """Adjusts all nodes at the given depth"""
+
+        # Left/right anchors prevent nodes from floating too far beyond the boundaries of the tree
         left_anchor = Dimensions(None, None, None, None, None, min_x, 0)
         right_anchor = Dimensions(None, None, None, None, None, max_x, 0)
 
@@ -90,12 +106,20 @@ def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, par
 
 
 def tree_layout(root):
+    """\
+    Performs tree layout with non-overlapping bounding boxes.
+
+    :param root: root of the tree
+    :return: list of dimensions
+    """
     def shift_all(dimensions, dx, dy):
+        """Shifts all dimnensions by the same amount"""
         return [Dimensions(dim.node, dim.x + dx, dim.y + dy, dim.width, dim.height,
                            node_x=dim.node_x + dx, node_y=dim.node_y + dy)
                 for dim in dimensions]
 
-    def total_dimensions(dimensions):
+    def bounding_box(dimensions):
+        """Computers the total dimensions (bounding box) of all dimensions in a list"""
         x = min(dim.x for dim in dimensions)
         y = min(dim.y for dim in dimensions)
         max_x = max(dim.x + dim.width for dim in dimensions)
@@ -103,6 +127,7 @@ def tree_layout(root):
         return Dimensions(None, x, y, max_x - x, max_y - y, None, None)
 
     def _layout(node):
+        """Lays out a subtree, returning a list of dimensions"""
         if not node.children:
             return [Dimensions(node, 0.0, 0.0, 1.0, 1.0, 0.5, 0.0)]
 
@@ -116,17 +141,17 @@ def tree_layout(root):
             children_dims = shift_all(children_dims, current_x, -1.0)
 
             # calculate bounding box for the subtree
-            total_subtree_dim = total_dimensions(children_dims)
+            subtree_bbox = bounding_box(children_dims)
 
-            current_x += total_subtree_dim.width
+            current_x += subtree_bbox.width
             all_dims.extend(children_dims)
 
-        total_children_dim = total_dimensions(all_dims)
+        children_bbox = bounding_box(all_dims)
 
         # Center parent over the children
         all_dims.append(Dimensions(node, 0.0, 0.0,
-                                   total_children_dim.width, total_children_dim.height + 1.0,
-                                   total_children_dim.width / 2, 0.0))
+                                   children_bbox.width, children_bbox.height + 1.0,
+                                   children_bbox.width / 2, 0.0))
         return all_dims
 
     dims = _layout(root)

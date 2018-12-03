@@ -3,7 +3,7 @@ Copyright (c) 2015-2018, MGH Computational Pathology
 
 """
 import math
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 import networkx as nx
@@ -45,22 +45,7 @@ def mock_data(n_events, n_entities, n_observations, start_date=None, end_date=No
     event_df['observation'] = npr.choice(obs_space, size=n_events)
     event_df['entity'] = npr.choice(entity_space, size=n_events)
 
-    # Generate some random metadata
-    age_coef = 2.0 * (npr.rand(len(obs_space)) - 0.5)
-    surv_coef = 2.0 * (npr.rand(len(obs_space)) - 0.5)
-
-    meta_records = []
-    for entity, sdf in event_df.groupby('entity'):
-        counts = sdf['observation'].value_counts()
-        obs_val = np.asarray([counts.get(obs, 0) for obs in obs_space])
-        meta_records.append({'entity': entity,
-                             'age': np.sum(age_coef * obs_val),
-                             'survival': np.sum(surv_coef * obs_val)})
-
-    meta_df = pd.DataFrame(meta_records)
-    meta_df['age'] = meta_df['age'].min() + meta_df['age']
-    meta_df['survival'] = meta_df['survival'].min() + meta_df['survival']
-    return event_df, meta_df.set_index('entity')
+    return event_df
 
 
 class Event(object):
@@ -117,19 +102,18 @@ class Entity(object):
 
 class Node(object):
     """Singl enode in the event tree"""
-    def __init__(self, states, children, entities, name=None, uid=None,
+    def __init__(self, trajectories, children, entities, name=None, uid=None,
                  parent=None):
         """
 
-        :param states: Set of states associated with this node, e.g. observations shared by everyone
-        in the subtree
+        :param trajectories: unique trajectories associated with this node
         :param children: list of child nodes
         :param entities: list of entities in the subtree
         :param name: name of the node (optional)
         :param uid: unique identifier
         :param parent: parent node (None if root)
         """
-        self.state = states
+        self.trajectories = trajectories
         self.children = children
         self.entities = entities
         self.name = name
@@ -173,35 +157,38 @@ def observations_to_date(entity, depth):
     return entity.observations(max_events=depth)
 
 
-def build_tree(events, get_state=observations_to_date, min_entities_per_node=1, max_depth=None):
+def build_tree(events, get_trajectory=observations_to_date, min_entities_per_node=1, max_depth=None):
     """\
     Builds an event tree
 
-    :param events:
-    :param get_state:
-    :param min_entities_per_node:
-    :param max_depth:
-    :return:
+    :param events: list of events
+    :param get_trajectory: callable entity, depth => list. Gets the trajectory at the given tree depth. \
+    Default: observations_to_date
+    :param min_entities_per_node: minimum number of entities per node
+    :param max_depth: maximum depth of the tree
+    :return: root of the constructed tree
+
     """
     def _build(entities, depth, parent):
-        unique_states = set(get_state(entity, depth) for entity in entities)
-        node = Node(unique_states, [], entities, parent=parent)
+        """Utility: builds a tree from a list of entities"""
+        unique_trajectories = set(get_trajectory(entity, depth) for entity in entities)
+        node = Node(unique_trajectories, [], entities, parent=parent)
 
         if min_entities_per_node is not None and len(entities) <= min_entities_per_node:
             return node
         elif max_depth is not None and depth >= max_depth:
             return node
 
-        next_states = defaultdict(list)
+        next_trajectories = defaultdict(list)
         for entity in entities:
-            next_states[get_state(entity, depth + 1)].append(entity)
+            next_trajectories[get_trajectory(entity, depth + 1)].append(entity)
 
-        if len(next_states) == 1 and set(next_states.keys()) == unique_states:
-            # No state transitions occurred
+        if len(next_trajectories) == 1 and set(next_trajectories.keys()) == unique_trajectories:
+            # No transitions occurred
             return node
 
         node.children = [_build(next_entities, depth + 1, parent=node)
-                         for next_state, next_entities in next_states.items()]
+                         for _, next_entities in next_trajectories.items()]
         return node
 
     entities = Entity.from_events(events)
@@ -213,10 +200,19 @@ def build_tree(events, get_state=observations_to_date, min_entities_per_node=1, 
 
 
 def collapse(node, min_entities_per_node):
+    """\
+    Collapses small nodes into a single "other" node at each level. This operation creates a copy
+    of the tree.
+
+    :param node: root node/subtree
+    :param min_entities_per_node: minimum number of entities per node
+    :return: transformed tree (new object)
+
+    """
     if not node.children:
         return node
 
-    new_node = Node(node.state, [],
+    new_node = Node(node.trajectories, [],
                     node.entities, node.name, node.uid, node.parent)
 
     small_children = [child for child in node.children if len(child.entities) < min_entities_per_node]
@@ -227,13 +223,13 @@ def collapse(node, min_entities_per_node):
 
     new_children = [collapse(child, min_entities_per_node) for child in large_children]
     if small_children:
-        other_states = set()
+        other_trajectories = set()
         other_entities = []
         for child in small_children:
-            other_states.update(child.state)
+            other_trajectories.update(child.trajectories)
             other_entities += child.entities
 
-        new_children.append(Node(other_states, [], other_entities, name="Other",
+        new_children.append(Node(other_trajectories, [], other_entities, name="Other",
                                  uid=small_children[0].uid, parent=new_node))
     new_node.children = new_children
 
@@ -241,11 +237,19 @@ def collapse(node, min_entities_per_node):
 
 
 def pretty_format_tree(root, indent=4):
+    """\
+    Pretty formats a tree, returning a string
+
+    :param root: root of the subtree to format
+    :param indent: indentation between levels (default 4)
+    :return: pretty tree as string
+
+    """
     def _format(node, parent, current_indent):
         txt = ""
-        txt += "{}* n={} ({:.1%}). States: {}\n".format(" " * current_indent, len(node.entities),
-                                                        1.0 * len(node.entities) / len(parent.entities),
-                                                        ", ".join(str(state) for state in node.state))
+        txt += "{}* n={} ({:.1%}). Trajectories: {}\n".format(" " * current_indent, len(node.entities),
+                                                              1.0 * len(node.entities) / len(parent.entities),
+                                                              ", ".join(str(traj) for traj in node.trajectories))
 
         txt += "".join(_format(child, node, current_indent + indent)
                        for child in node.children)
@@ -255,20 +259,30 @@ def pretty_format_tree(root, indent=4):
 
 
 def new_observation(parent, child, max_observations=1):
+    """\
+    Gets the new observations between a parent and its children
+    :param parent: parent node
+    :param child: child node
+    :param max_observations: for nodes with multiple associated trajectories, the new "observation" will be a union
+    e.g. "OBS1 or OBS2 or OBS3". max_observations specifies the max number of alternatives before the result
+    is abbreviated as "other". Default 1
+
+    """
     def begins_with(lst, prefix):
+        """True iff lst begins with a prefix"""
         if len(lst) < len(prefix):
             return False
         return lst[:len(prefix)] == prefix
 
-    if len(parent.state) > 1:
+    if len(parent.trajectories) > 1:  # The parent has entities with different trajectories
         return ""
     else:
-        parent_state, = parent.state
+        parent_trajectory, = parent.trajectories
 
         new_obs = set()
-        for state in child.state:
-            if begins_with(state, parent_state):
-                new_obs.add(state[len(parent_state):])
+        for trajectory in child.trajectories:
+            if begins_with(trajectory, parent_trajectory):
+                new_obs.add(trajectory[len(parent_trajectory):])
 
         if len(new_obs) > max_observations:
             return "other"
@@ -280,8 +294,27 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
               get_size=None, get_color=None, cmap=None,
               get_edge_label=None, size=1200.0, draw_bbox=False,
               alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0):
+    """\
+    Draws the tree
+
+    :param tree: root/subtree to draw
+    :param get_name: label to use for nodes. callable node -> string. Default: number of entities
+    :param get_size: node size. callable node -> float. Default: area-proportional to number of entities
+    :param get_color: get node color. callable node -> color. Default: None
+    :param cmap: color map to use, e.g. RdYlBu
+    :param get_edge_label: gets label for edges. callable parent, child -> string. Default: None
+    :param size: root node size. Only relevant if using default get_size.
+    :param draw_bbox: true to draw bounding boxes around subtrees
+    :param alpha: step size of force layout. Larger values will result in larger adjustments.
+    :param iterations: number of iterations for force layout. Use 0 to skip force adjustment.
+    :param spring_constant: spring constant for force layout.
+    :param parent_multiplier: strength multiplier for force from parent
+    :return: None
+
+    """
 
     def default_get_node_size(node):
+        """Default node size: area-preserving wrt number of entities"""
         return size * math.sqrt(1.0 * len(node.entities) / len(tree.entities))  # area is linearly proportional
 
     get_size = get_size or default_get_node_size
@@ -317,12 +350,12 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
 
 def main():
     np.random.seed(0xC0FFEE)
-    df, meta_df = mock_data(5000, 500, 4)
+    df = mock_data(5000, 500, 4)
     events = Event.from_dataframe(df, 'timestamp', 'observation', 'entity')
 
     print("{} events".format(len(events)))
-    tree = build_tree(events, min_entities_per_node=20)
-    tree = collapse(tree, 20)
+    tree = build_tree(events, min_entities_per_node=5)
+    tree = collapse(tree, 30)
     print("Unique depths: {}".format(sorted(set(node.depth for node in tree.walk()))))
     print(pretty_format_tree(tree))
 
