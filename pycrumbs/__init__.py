@@ -15,6 +15,8 @@ import numpy.random as npr
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
+from pycrumbs.layout import tree_layout, force_adjust
+
 
 def mock_data(n_events, n_entities, n_observations, start_date=None, end_date=None):
     """\
@@ -115,7 +117,8 @@ class Entity(object):
 
 class Node(object):
     """Singl enode in the event tree"""
-    def __init__(self, states, children, entities, name=None, uid=None):
+    def __init__(self, states, children, entities, name=None, uid=None,
+                 parent=None):
         """
 
         :param states: Set of states associated with this node, e.g. observations shared by everyone
@@ -124,12 +127,14 @@ class Node(object):
         :param entities: list of entities in the subtree
         :param name: name of the node (optional)
         :param uid: unique identifier
+        :param parent: parent node (None if root)
         """
         self.state = states
         self.children = children
         self.entities = entities
         self.name = name
         self.uid = uid
+        self.parent = parent
 
     def walk(self):
         """Depth-first iterator over all nodes in the subtree, including self"""
@@ -155,6 +160,13 @@ class Node(object):
         G = nx.DiGraph()
         return _recurse(G, self)
 
+    @property
+    def depth(self):
+        """Depth in the tree (root's depth is 0)"""
+        if not self.parent:
+            return 0
+        return 1 + self.parent.depth
+
 
 def observations_to_date(entity, depth):
     """Default tree construction criterion: returns the first n event codes, in chronological order"""
@@ -171,9 +183,9 @@ def build_tree(events, get_state=observations_to_date, min_entities_per_node=1, 
     :param max_depth:
     :return:
     """
-    def _build(entities, depth):
+    def _build(entities, depth, parent):
         unique_states = set(get_state(entity, depth) for entity in entities)
-        node = Node(unique_states, [], entities)
+        node = Node(unique_states, [], entities, parent=parent)
 
         if min_entities_per_node is not None and len(entities) <= min_entities_per_node:
             return node
@@ -188,16 +200,44 @@ def build_tree(events, get_state=observations_to_date, min_entities_per_node=1, 
             # No state transitions occurred
             return node
 
-        node.children = [_build(next_entities, depth + 1)
+        node.children = [_build(next_entities, depth + 1, parent=node)
                          for next_state, next_entities in next_states.items()]
         return node
 
     entities = Entity.from_events(events)
-    root = _build(entities, 0)
+    root = _build(entities, 0, None)
     for idx, node in enumerate(root.walk()):
         node.uid = idx
 
     return root
+
+
+def collapse(node, min_entities_per_node):
+    if not node.children:
+        return node
+
+    new_node = Node(node.state, [],
+                    node.entities, node.name, node.uid, node.parent)
+
+    small_children = [child for child in node.children if len(child.entities) < min_entities_per_node]
+    large_children = [child for child in node.children if len(child.entities) >= min_entities_per_node]
+
+    if not large_children:  # collapsing would create a single child, so get rid of children altogether
+        return new_node
+
+    new_children = [collapse(child, min_entities_per_node) for child in large_children]
+    if small_children:
+        other_states = set()
+        other_entities = []
+        for child in small_children:
+            other_states.update(child.state)
+            other_entities += child.entities
+
+        new_children.append(Node(other_states, [], other_entities, name="Other",
+                                 uid=small_children[0].uid, parent=new_node))
+    new_node.children = new_children
+
+    return new_node
 
 
 def pretty_format_tree(root, indent=4):
@@ -214,56 +254,7 @@ def pretty_format_tree(root, indent=4):
     return _format(root, root, 0).strip()
 
 
-def tree_layout(root, vsep=1.0, hsep=1.0):
-    Dimensions = namedtuple("Dimensions", ("x", "y", "width", "height", "node_x", "node_y"))
-
-    def shift_all(dimensions, dx, dy):
-        return {uid: Dimensions(dim.x + dx, dim.y + dy, dim.width, dim.height,
-                                node_x=dim.node_x + dx, node_y=dim.node_y + dy)
-                for uid, dim in dimensions.items()}
-
-    def total_dimensions(dimensions):
-        x = min(dim.x for dim in dimensions)
-        y = min(dim.y for dim in dimensions)
-        max_x = max(dim.x + dim.width for dim in dimensions)
-        max_y = max(dim.y + dim.height for dim in dimensions)
-        return Dimensions(x, y, max_x - x, max_y - y, None, None)
-
-    def _layout(node):
-        if not node.children:
-            return {node.uid: Dimensions(0.0, 0.0, 1.0, 1.0, 0.5, 0.5)}
-
-        current_x = 0
-        all_dims = {}
-        for child in node.children:
-            # recursively layout all subtrees
-            children_dims = _layout(child)
-
-            # shift horizontally past the previously laid out subtree, and one level down under the root
-            children_dims = shift_all(children_dims, current_x, -1.0)
-
-            # calculate bounding box for the subtree
-            total_subtree_dim = total_dimensions(children_dims.values())
-
-            current_x += total_subtree_dim.width
-            all_dims.update(children_dims)
-
-        total_children_dim = total_dimensions(all_dims.values())
-
-        # Center parent over the children
-        all_dims[node.uid] = Dimensions(0.0, 0.0,
-                                        total_children_dim.width, total_children_dim.height + 1.0,
-                                        total_children_dim.width / 2, 0.0)
-        return all_dims
-
-    dims = _layout(root)
-
-    # Center on the nodes and scale to the desired dimensions
-    return {uid: (dim.node_x * hsep, dim.node_y * vsep)
-            for uid, dim in dims.items()}, dims
-
-
-def new_observation(parent, child):
+def new_observation(parent, child, max_observations=1):
     def begins_with(lst, prefix):
         if len(lst) < len(prefix):
             return False
@@ -279,12 +270,16 @@ def new_observation(parent, child):
             if begins_with(state, parent_state):
                 new_obs.add(state[len(parent_state):])
 
-        return " or ".join(str(", ".join(x)) for x in new_obs)
+        if len(new_obs) > max_observations:
+            return "other"
+        else:
+            return " or ".join(str(", ".join([str(elt) for elt in x])) for x in new_obs)
 
 
 def draw_tree(tree, get_name=lambda node: len(node.entities),
               get_size=None, get_color=None, cmap=None,
-              get_edge_label=None, size=1200.0, draw_bbox=False):
+              get_edge_label=None, size=1200.0, draw_bbox=False,
+              alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0):
 
     def default_get_node_size(node):
         return size * math.sqrt(1.0 * len(node.entities) / len(tree.entities))  # area is linearly proportional
@@ -294,7 +289,14 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
     node_colors = {node.uid: get_color(node) for node in tree.walk()} if get_color else None
 
     G = tree.to_graph()
-    pos, dimensions = tree_layout(tree)
+    dimensions = tree_layout(tree)
+    if iterations > 0:
+        force_adjust(dimensions, alpha=alpha, iterations=iterations, spring_constant=spring_constant,
+                     parent_multiplier=parent_multiplier)
+
+    pos = {dim.node.uid: (dim.node_x, dim.node_y)
+           for dim in dimensions}
+
     nx.draw(G, pos,
             labels={node.uid: get_name(node) for node in tree.walk()},
             node_size=[node_sizes[uid] for uid in G.nodes],
@@ -303,9 +305,9 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
 
     if draw_bbox:
         ax = plt.gca()
-        for _, dim in dimensions.items():
+        for dim in dimensions:
             ax.add_patch(Rectangle((dim.x, dim.y), dim.width, dim.height,
-                                  fill=None, alpha=1))
+                                   fill=None, alpha=1))
 
     if get_edge_label:
         nx.draw_networkx_edge_labels(G, pos,
@@ -314,11 +316,14 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
 
 
 def main():
+    np.random.seed(0xC0FFEE)
     df, meta_df = mock_data(5000, 500, 4)
     events = Event.from_dataframe(df, 'timestamp', 'observation', 'entity')
 
     print("{} events".format(len(events)))
-    tree = build_tree(events, min_entities_per_node=10)
+    tree = build_tree(events, min_entities_per_node=20)
+    tree = collapse(tree, 20)
+    print("Unique depths: {}".format(sorted(set(node.depth for node in tree.walk()))))
     print(pretty_format_tree(tree))
 
     draw_tree(tree, cmap='RdYlBu',
