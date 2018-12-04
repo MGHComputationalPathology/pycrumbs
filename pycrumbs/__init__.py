@@ -293,7 +293,8 @@ def new_observation(parent, child, max_observations=1):
 def draw_tree(tree, get_name=lambda node: len(node.entities),
               get_size=None, get_color=None, cmap=None,
               get_edge_label=None, size=1200.0, draw_bbox=False,
-              alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0):
+              alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0,
+              neutral_length=1.0):
     """\
     Draws the tree
 
@@ -309,6 +310,7 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
     :param iterations: number of iterations for force layout. Use 0 to skip force adjustment.
     :param spring_constant: spring constant for force layout.
     :param parent_multiplier: strength multiplier for force from parent
+    :param neutral_length: neutral spring length. Default 1.0
     :return: None
 
     """
@@ -325,7 +327,7 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
     dimensions = tree_layout(tree)
     if iterations > 0:
         force_adjust(dimensions, alpha=alpha, iterations=iterations, spring_constant=spring_constant,
-                     parent_multiplier=parent_multiplier)
+                     parent_multiplier=parent_multiplier, neutral_length=neutral_length)
 
     pos = {dim.node.uid: (dim.node_x, dim.node_y)
            for dim in dimensions}
@@ -361,7 +363,8 @@ def main():
 
     draw_tree(tree, cmap='RdYlBu',
               get_color=lambda node: npr.rand(),
-              get_edge_label=new_observation)
+              get_edge_label=new_observation,
+              iterations=100)
     plt.show()
 
 

@@ -41,7 +41,8 @@ def spring_force(pos_a, pos_b, neutral_length=1.0, spring_constant=1.0, alpha=0.
         return (np.random.random() - 0.5) * np.array([spring_constant, spring_constant])  # perturb randomly
 
 
-def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0):
+def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, parent_multiplier=10.0,
+                 neutral_length=1.0):
     """\
     Adjusts node coordinates using a force-directed layout model. The adjustment is performed along the x axis only.
     The algorithm runs in-place.
@@ -51,6 +52,7 @@ def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, par
     :param iterations: number of iterations to run
     :param spring_constant: spring constant
     :param parent_multiplier: multiplier for force from parent -> this will tend to keep children close to their parents
+    :param neutral_length: neutral spring length. Default 1.0
     :return: adjusted dimensions
 
     """
@@ -71,18 +73,21 @@ def force_adjust(dimensions, alpha=0.1, iterations=100, spring_constant=0.5, par
             # Force due to left neighbor
             force_vec = spring_force((left.node_x, left.node_y) if left else None,
                                      (dims[i].node_x, dims[i].node_y),
-                                     spring_constant=spring_constant)
+                                     spring_constant=spring_constant,
+                                     neutral_length=neutral_length)
 
             # Force due to right neighbor
             force_vec += spring_force((right.node_x, right.node_y) if right else None,
                                       (dims[i].node_x, dims[i].node_y),
-                                      spring_constant=spring_constant)
+                                      spring_constant=spring_constant,
+                                      neutral_length=neutral_length)
 
             # Force due to parent
             parent = dims_by_uid.get(dims[i].node.parent.uid) if dims[i].node.parent else None
             force_vec += parent_multiplier * spring_force((parent.node_x, parent.node_y) if parent else None,
                                                           (dims[i].node_x, dims[i].node_y),
-                                                          spring_constant=spring_constant)
+                                                          spring_constant=spring_constant,
+                                                          neutral_length=neutral_length)
 
             # We put the nodes on rails in the x dimension, i.e. ignore the y component of the force
             dx = force_vec[0] * alpha
