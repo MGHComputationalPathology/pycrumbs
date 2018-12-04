@@ -168,7 +168,7 @@ ignore-imports=no
 bad-functions=map,filter,apply,input,file
 
 # Good variable names which should always be accepted, separated by a comma
-good-names=_,i,j,k,e,qs,pk,setUp,tearDown,id,X,x,y,u,v,df,xs,cv,r,f,gp,qq,_X,db,td,kv,dr,Base,Session,m,dt
+good-names=_,i,j,k,e,qs,pk,setUp,tearDown,id,X,x,y,u,v,df,xs,cv,r,f,gp,qq,_X,db,td,kv,dr,Base,Session,m,dt,G,ax,dx,dy
 
 # Bad variable names which should always be refused, separated by a comma
 bad-names=

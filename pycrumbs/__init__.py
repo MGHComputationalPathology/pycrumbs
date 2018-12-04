@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import networkx as nx
 
-import numpy as np
 import pandas as pd
 import numpy.random as npr
 
@@ -57,10 +56,12 @@ class Event(object):
 
     @staticmethod
     def from_dataframe(df, time_col, observation_col, entity_col):
+        """Parses event objects from a dataframe, returning a list"""
         return Event.from_arrays(df[time_col], df[observation_col], df[entity_col])
 
     @staticmethod
     def from_arrays(time, observations, entities):
+        """Parses event objects from parallel arrays"""
         return [Event(*args) for args in zip(entities, observations, time)]
 
 
@@ -290,6 +291,7 @@ def new_observation(parent, child, max_observations=1):
             return " or ".join(str(", ".join([str(elt) for elt in x])) for x in new_obs)
 
 
+# pylint: disable=too-many-arguments,too-many-locals
 def draw_tree(tree, get_name=lambda node: len(node.entities),
               get_size=None, get_color=None, cmap=None,
               get_edge_label=None, size=1200.0, draw_bbox=False,

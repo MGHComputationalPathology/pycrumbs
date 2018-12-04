@@ -7,10 +7,11 @@
 import nose
 import numpy as np
 
-from pycrumbs import mock_data, Event, build_tree, collapse, pretty_format_tree
+from pycrumbs import mock_data, Event, build_tree
 
 
 def test_tree_construction():
+    """Tests construction of transition trees from events"""
     df = mock_data(5000, 500, 4)
     events = Event.from_dataframe(df, 'timestamp', 'observation', 'entity')
     tree = build_tree(events, min_entities_per_node=5)
@@ -25,7 +26,7 @@ def test_tree_construction():
             entities += node.entities
 
     nose.tools.eq_(len(entities), len(df['entity'].unique()))
-    nose.tools.eq_(set([ent.name for ent in entities]), set(df['entity'].unique()))
+    nose.tools.eq_({ent.name for ent in entities}, set(df['entity'].unique()))
 
     # The events are uniform so the tree should be about 4-5 levels deep (i.e. log4(500))
     mean_leaf_depth = np.mean([node.depth for node in tree.walk() if not node.children])

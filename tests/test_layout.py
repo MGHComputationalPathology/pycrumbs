@@ -123,7 +123,7 @@ def test_spring_force_layout():
         """Computes the total potential energy in the system"""
         energy = 0.0
         dimensions = sorted(dimensions, key=lambda dim: dim.node.depth)
-        for depth, subdims in itertools.groupby(dimensions, key=lambda dim: dim.node.depth):
+        for _, subdims in itertools.groupby(dimensions, key=lambda dim: dim.node.depth):
             subdims = sorted(subdims, key=lambda dim: dim.node_x)
             for i in range(1, len(subdims)):
                 energy += potential_energy(subdims[i - 1], subdims[i])
