@@ -130,6 +130,7 @@ def test_spring_force_layout():
 
         return energy
 
+    np.random.seed(0xC0FFEE)
     df = mock_data(5000, 500, 4)
     events = Event.from_dataframe(df, 'timestamp', 'observation', 'entity')
     tree = build_tree(events, min_entities_per_node=5)
@@ -139,7 +140,7 @@ def test_spring_force_layout():
 
     # The total potential energy in the system should be decreasing
     last_energy = initial_energy
-    for n_iter in [10, 20, 100, 200]:
+    for n_iter in [50, 100, 200]:
         dimensions_adj = force_adjust(tree_layout(tree), iterations=n_iter, alpha=0.01)
         _check_hierarchy(dimensions_adj)  # It should still look like a tree
 
