@@ -348,25 +348,3 @@ def draw_tree(tree, get_name=lambda node: len(node.entities),
         nx.draw_networkx_edge_labels(G, pos,
                                      edge_labels={(parent.uid, child.uid): get_edge_label(parent, child)
                                                   for parent, child in tree.walk_edges()})
-
-
-def main():
-    np.random.seed(0xC0FFEE)
-    df = mock_data(5000, 500, 4)
-    events = Event.from_dataframe(df, 'timestamp', 'observation', 'entity')
-
-    print("{} events".format(len(events)))
-    tree = build_tree(events, min_entities_per_node=5)
-    tree = collapse(tree, 30)
-    print("Unique depths: {}".format(sorted(set(node.depth for node in tree.walk()))))
-    print(pretty_format_tree(tree))
-
-    draw_tree(tree, cmap='RdYlBu',
-              get_color=lambda node: npr.rand(),
-              get_edge_label=new_observation,
-              iterations=100)
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()
