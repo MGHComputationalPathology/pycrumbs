@@ -1,5 +1,7 @@
 
 # PyCrumbs
+[![Build Status](https://travis-ci.org/MGHComputationalPathology/pycrumbs.svg?branch=master)](https://travis-ci.org/MGHComputationalPathology/pycrumbs)
+
 
 ## Introduction
 PyCrumbs is a Python library for visualizing trajectories from longitudinal event data. It was designed with healthcare data in mind (e.g. medications & treatment trajectories) but generalizes to other domains as well.
@@ -24,19 +26,7 @@ df.head(10)
 
 
 <div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
 <table border="1" class="dataframe">
   <thead>
     <tr style="text-align: right;">
@@ -147,7 +137,7 @@ The defaults can be easily customized by passing different functions. For exampl
 ```python
 def my_edge_label(parent, child):
     return "{} (p={:.1%})".format(new_observation(parent, child),
-                                 1.0 * len(child.entities) / len(parent.entities))
+                                  1.0 * len(child.entities) / len(parent.entities))
 
 plt.figure(figsize=(15, 10))
 draw_tree(tree, 
@@ -157,9 +147,3 @@ draw_tree(tree,
 
 
 ![png](examples/output_10_0.png)
-
-
-
-```python
-
-```
