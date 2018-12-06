@@ -10,6 +10,11 @@ At the base of PyCrumbs is an `Event` representing a single timestamped observat
 
 Entities can be transformed into a trajectory tree which represents transitions between observations. At the root, the patients don't have any observations (empty trajectory). They subsequently transition into child nodes based on the type of observation they acquire.
 
+## Installation
+```bash
+pip install git+https://github.com/MGHComputationalPathology/pycrumbs.git
+```
+
 ## Example
 
 Let's begin by mocking up 10k observations for 1000 patients, corresponding to 5 discrete types of medications.
