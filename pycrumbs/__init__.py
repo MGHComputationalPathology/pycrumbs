@@ -270,7 +270,7 @@ def new_observation(parent, child, max_observations=1):
 
     """
     def begins_with(lst, prefix):
-        """True iff lst begins with a prefix"""
+        """Checks whether a list/tuple is a prefix of another"""
         if len(lst) < len(prefix):
             return False
         return lst[:len(prefix)] == prefix

@@ -124,7 +124,7 @@ def tree_layout(root):
                 for dim in dimensions]
 
     def bounding_box(dimensions):
-        """Computers the total dimensions (bounding box) of all dimensions in a list"""
+        """Computes the bounding box of all dimensions in a list"""
         x = min(dim.x for dim in dimensions)
         y = min(dim.y for dim in dimensions)
         max_x = max(dim.x + dim.width for dim in dimensions)
