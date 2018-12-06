@@ -1,0 +1,17 @@
+language: python
+python:
+  - "3.5"
+  - "3.6"
+
+install:
+  - pip install -r requirements.txt
+  - pip install -r test_requirements.txt
+
+script:
+  - bash run_tests.sh
+  - bash run_lints.sh
+
+notifications:
+  email:
+    on_success: always
+    on_failure: always
