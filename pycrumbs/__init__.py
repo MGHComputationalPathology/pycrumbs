@@ -36,8 +36,8 @@ def mock_data(n_events, n_entities, n_observations, start_date=None, end_date=No
     if end_date <= start_date:
         raise ValueError("Start date not before end date: {}, {}".format(start_date, end_date))
 
-    obs_space = ['OBS{}'.format(idx) for idx in range(n_observations)]
-    entity_space = ['ENT{}'.format(idx) for idx in range(n_entities)]
+    obs_space = ['MEDICATION_{}'.format(idx) for idx in range(n_observations)]
+    entity_space = ['PATIENT_{}'.format(idx) for idx in range(n_entities)]
 
     event_df = pd.DataFrame()
     event_df['timestamp'] = [start_date + timedelta(seconds=x * date_range.total_seconds()) for x in npr.rand(n_events)]
